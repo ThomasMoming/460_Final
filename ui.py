@@ -4,6 +4,7 @@ import event_handler
 from piano_display import PianoDisplay
 from piano_controls import PianoControls
 import time
+from markov import MarkovMelodyGenerator
 
 class VirtualPiano:
     def __init__(self, root):
@@ -11,7 +12,7 @@ class VirtualPiano:
         self.root.title("Virtual Piano")
         self.root.geometry("450x350")
         self.root.configure(bg="gray")
-        self.root.focus_force()  # 强制窗口获取键盘焦点
+        self.root.focus_force()
 
         self.note_display = PianoDisplay(root)
 
@@ -39,6 +40,9 @@ class VirtualPiano:
         self.active_keys = {}
         self.start_time = None
 
+        self.markov_generated_melody = []  # 存储 Markov 生成的旋律
+        self.markov_generator = MarkovMelodyGenerator()  # 预加载 Markov Chain 模型
+
         self.root.bind("<Escape>", lambda event: self.stop_recording())
 
         self.create_buttons()
@@ -46,6 +50,11 @@ class VirtualPiano:
     def create_buttons(self):
         button_frame = tk.Frame(self.root, bg="gray")
         button_frame.pack(side=tk.BOTTOM, pady=10)
+
+        btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
+                                    width=10, height=1, command=self.play_markov_melody)
+        btn_play_markov.pack(side=tk.TOP, padx=5)
+
 
         buttons = [
             ("Start", self.start_recording),
@@ -130,8 +139,26 @@ class VirtualPiano:
             event_handler.stop_midi(midi_note)
 
     # **添加这两个方法，避免 `AttributeError`**
+
+    def play_markov_melody(self):
+        """ 播放 Markov 生成的旋律 """
+        if not self.markov_generated_melody:
+            print("⚠ 还未生成 Markov 旋律，请先点击 'Markov' 按钮！")
+            return
+
+        print("▶ 播放 Markov 生成的旋律...")
+        for note in self.markov_generated_melody:
+            if note in config.NOTE_MAP:
+                event_handler.play_midi(config.NOTE_MAP[note])
+                self.note_display.update_display(config.SCALE_MAP[note])
+                time.sleep(0.5)
+                event_handler.stop_midi(config.NOTE_MAP[note])
+
     def generate_markov(self):
         print("Markov Chain 生成旋律（待实现）")
+        """ 生成 Markov 旋律并存储 """
+        self.markov_generated_melody = self.markov_generator.generate_melody()
+        print(f"✅ Markov 生成的旋律: {self.markov_generated_melody}")
 
     def generate_magenta(self):
         print("Magenta AI 生成旋律（待实现）")
