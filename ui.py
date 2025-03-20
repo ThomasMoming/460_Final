@@ -248,8 +248,8 @@ class VirtualPiano:
         except Exception as e:
             print(f"存储训练数据失败: {e}")
 
-    def generate_magenta(self):
+    def generate_Audiocraft(self):
         print("Magenta AI 生成旋律（待实现）")
 
-    def play_magenta(self):
+    def play_Audiocraft(self):
         print("....")
