@@ -141,24 +141,47 @@ class VirtualPiano:
     # **添加这两个方法，避免 `AttributeError`**
 
     def play_markov_melody(self):
-        """ 播放 Markov 生成的旋律 """
+        """ 播放 Markov 生成的旋律，按照音符时长播放 """
         if not self.markov_generated_melody:
             print("⚠ 还未生成 Markov 旋律，请先点击 'Markov' 按钮！")
             return
 
         print("▶ 播放 Markov 生成的旋律...")
-        for note in self.markov_generated_melody:
+        for note, duration in self.markov_generated_melody:  # 遍历 (音符, 时长)
             if note in config.NOTE_MAP:
-                event_handler.play_midi(config.NOTE_MAP[note])
-                self.note_display.update_display(config.SCALE_MAP[note])
-                time.sleep(0.5)
-                event_handler.stop_midi(config.NOTE_MAP[note])
+                midi_note = config.NOTE_MAP[note]
+                event_handler.play_midi(midi_note)  # 播放 MIDI 音符
+                self.note_display.update_display(config.SCALE_MAP[note])  # 更新 Label 显示
+
+                time.sleep(duration)  # **按照时长播放音符**
+
+                event_handler.stop_midi(midi_note)  # 停止音符
 
     def generate_markov(self):
-        print("Markov Chain 生成旋律（待实现）")
-        """ 生成 Markov 旋律并存储 """
-        self.markov_generated_melody = self.markov_generator.generate_melody()
-        print(f"✅ Markov 生成的旋律: {self.markov_generated_melody}")
+        """ 将录制的音符存入 dataset.txt，训练 Markov Chain 并生成旋律 """
+        if not self.recorded_notes:
+            print("没有录制的音符，无法训练 Markov Chain")
+            return
+
+        print("追加录制的旋律到 dataset.txt...")
+
+        try:
+            # **追加用户录制的音符到 dataset.txt**
+            with open("dataset.txt", "a", encoding="utf-8") as f:
+                for note, timing in zip(self.recorded_notes, self.recorded_timings):
+                    f.write(f"{config.NOTE_MAP[note]},{int(timing * self.markov_generator.ticks_per_second)}\n")
+
+            print("录制的旋律已追加到 dataset.txt")
+
+            # **重新加载 Markov 训练数据**
+            self.markov_generator.load_pretrained_model()
+
+            # **生成旋律**
+            self.markov_generated_melody = self.markov_generator.generate_melody()
+            print(f"Markov 生成的旋律: {self.markov_generated_melody}")
+
+        except Exception as e:
+            print(f"训练 Markov 失败: {e}")
 
     def generate_magenta(self):
         print("Magenta AI 生成旋律（待实现）")
