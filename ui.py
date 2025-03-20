@@ -84,25 +84,25 @@ class VirtualPiano:
                              width=button_width, height=button_height, command=self.stop_recording)
         btn_markov = tk.Button(button_frame, text="Markov", font=("Arial", 9, "bold"),
                                width=button_width, height=button_height, command=self.generate_markov)
-        btn_magenta = tk.Button(button_frame, text="Magenta", font=("Arial", 9, "bold"),
-                                width=button_width, height=button_height, command=self.generate_magenta)
+        btn_Audiocraft = tk.Button(button_frame, text="Audiocraft", font=("Arial", 9, "bold"),
+                                width=button_width, height=button_height, command=self.generate_Audiocraft)
         btn_play = tk.Button(button_frame, text="Play", font=("Arial", 9, "bold"),
                              width=button_width, height=button_height, command=self.play_recording)
 
-        # 播放 Markov 和 Magenta 旋律的按钮
+        # 播放 Markov 和 Audiocraft 旋律的按钮
         btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
                                     width=button_width, height=button_height, command=self.play_markov_melody)
-        btn_play_magenta = tk.Button(button_frame, text="Play Magenta", font=("Arial", 9, "bold"),
-                                     width=button_width, height=button_height, command=self.play_magenta)
+        btn_play_Audiocraft = tk.Button(button_frame, text="Play Audiocraft", font=("Arial", 9, "bold"),
+                                     width=button_width, height=button_height, command=self.play_Audiocraft)
 
         # **使用 Grid 布局，使按钮整齐排列**
         btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
-        btn_play_magenta.grid(row=0, column=3, pady=2)  # Play Magenta 在 Magenta 按钮正上方
+        btn_play_Audiocraft.grid(row=0, column=3, pady=2)  # Play Audiocraft 在 Audiocraft 按钮正上方
 
         btn_start.grid(row=1, column=0, padx=5, pady=5)
         btn_stop.grid(row=1, column=1, padx=5, pady=5)
         btn_markov.grid(row=1, column=2, padx=5, pady=5)  # Markov 按钮
-        btn_magenta.grid(row=1, column=3, padx=5, pady=5)  # Magenta 按钮
+        btn_Audiocraft.grid(row=1, column=3, padx=5, pady=5)  # Audiocraft 按钮
         btn_play.grid(row=1, column=4, padx=5, pady=5)
 
     def start_recording(self):
