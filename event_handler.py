@@ -43,8 +43,8 @@ def highlight_key(keys, key, root):
         print(f"高亮按键: {key}")  # 调试信息
         keys[key].config(bg=config.ACTIVE_COLOR)
         keys[key].update_idletasks()
-        midi_note = config.NOTE_MAP.get(key)
-        play_midi(midi_note)
+        # midi_note = config.NOTE_MAP.get(key)
+        # play_midi(midi_note)
 
 
 def reset_key(keys, key):

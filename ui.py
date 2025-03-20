@@ -1,3 +1,4 @@
+import threading
 import tkinter as tk
 import config
 import event_handler
@@ -40,8 +41,8 @@ class VirtualPiano:
         self.active_keys = {}
         self.start_time = None
 
-        self.markov_generated_melody = []  # 存储 Markov 生成的旋律
-        self.markov_generator = MarkovMelodyGenerator()  # 预加载 Markov Chain 模型
+        # **初始化 Markov 旋律生成器**
+        self.markov_generator = MarkovMelodyGenerator()  # 确保这个对象被创建
 
         self.root.bind("<Escape>", lambda event: self.stop_recording())
 
@@ -141,47 +142,76 @@ class VirtualPiano:
     # **添加这两个方法，避免 `AttributeError`**
 
     def play_markov_melody(self):
-        """ 播放 Markov 生成的旋律，按照音符时长播放 """
-        if not self.markov_generated_melody:
-            print("⚠ 还未生成 Markov 旋律，请先点击 'Markov' 按钮！")
+        """ 播放 Markov 生成的旋律，限制 20 秒 或 按 Tab 暂停 """
+        if not hasattr(self, 'markov_generator') or not self.markov_generator:
+            print("Markov 生成器未初始化，无法播放")
             return
 
-        print("▶ 播放 Markov 生成的旋律...")
-        for note, duration in self.markov_generated_melody:  # 遍历 (音符, 时长)
-            if note in config.NOTE_MAP:
-                midi_note = config.NOTE_MAP[note]
-                event_handler.play_midi(midi_note)  # 播放 MIDI 音符
-                self.note_display.update_display(config.SCALE_MAP[note])  # 更新 Label 显示
+        generated_melody = self.markov_generator.generate_melody(50)  # 生成较长旋律
+        if not generated_melody:
+            print("无法播放 Markov 旋律")
+            return
 
-                time.sleep(duration)  # **按照时长播放音符**
+        self.stop_playing = False  # 允许播放
+        self.start_time = time.time()  # 记录播放开始时间
 
-                event_handler.stop_midi(midi_note)  # 停止音符
+        def play():
+            for note, duration in generated_melody:
+                if self.stop_playing:
+                    print("播放已手动暂停")
+                    break
+
+                elapsed_time = time.time() - self.start_time
+                if elapsed_time > 20:  # 超过 20 秒自动停止
+                    print("播放时间达到 20 秒，自动停止")
+                    break
+
+                event_handler.play_midi(note)
+                time.sleep(duration / 480.0)  # 将 ticks 转换为秒
+                event_handler.stop_midi(note)
+
+            print("播放完成")
+
+        # **使用线程播放，避免 Tkinter 阻塞**
+        threading.Thread(target=play, daemon=True).start()
+
+        # 绑定 Tab 键暂停
+        self.root.bind("<Tab>", lambda event: self.toggle_playback())
+
+    def toggle_playback(self):
+        """ 切换播放状态（按 Tab 键暂停/继续）"""
+        self.stop_playing = not self.stop_playing
+        if self.stop_playing:
+            print("播放已暂停（按 Tab 继续）")
+        else:
+            print("播放继续")
+            self.play_markov_melody()  # 继续播放
 
     def generate_markov(self):
-        """ 将录制的音符存入 dataset.txt，训练 Markov Chain 并生成旋律 """
+        """ 将录制的旋律存入 dataset.txt，并更新 Markov 模型 """
         if not self.recorded_notes:
-            print("没有录制的音符，无法训练 Markov Chain")
+            print("没有录制的音符，无法训练 Markov 模型。")
             return
 
-        print("追加录制的旋律到 dataset.txt...")
-
         try:
-            # **追加用户录制的音符到 dataset.txt**
-            with open("dataset.txt", "a", encoding="utf-8") as f:
-                for note, timing in zip(self.recorded_notes, self.recorded_timings):
-                    f.write(f"{config.NOTE_MAP[note]},{int(timing * self.markov_generator.ticks_per_second)}\n")
+            # 组合音符和持续时间，格式：Note:Duration
+            new_data = " ".join([f"{config.NOTE_MAP[note]}:{int(self.recorded_durations.get(note, 0.5) * 480)}"
+                                 for note in self.recorded_notes])
 
-            print("录制的旋律已追加到 dataset.txt")
+            # 追加到 dataset.txt
+            with open("dataset.txt", "a") as f:
+                f.write(new_data + "\n")
 
-            # **重新加载 Markov 训练数据**
-            self.markov_generator.load_pretrained_model()
+            print(f"已存入训练数据: {new_data}")
 
-            # **生成旋律**
-            self.markov_generated_melody = self.markov_generator.generate_melody()
-            print(f"Markov 生成的旋律: {self.markov_generated_melody}")
+            # **检查 markov_generator 是否初始化**
+            if self.markov_generator:
+                self.markov_generator.train_from_file("dataset.txt")
+            else:
+                print("⚠️ Markov 生成器未正确初始化")
 
         except Exception as e:
-            print(f"训练 Markov 失败: {e}")
+            print(f"存储训练数据失败: {e}")
 
     def generate_magenta(self):
         print("Magenta AI 生成旋律（待实现）")
