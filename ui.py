@@ -14,6 +14,7 @@ class VirtualPiano:
         self.root.geometry("450x350")
         self.root.configure(bg="gray")
         self.root.focus_force()
+        self.trim_dataset()
 
         self.note_display = PianoDisplay(root)
 
@@ -48,27 +49,61 @@ class VirtualPiano:
 
         self.create_buttons()
 
+    def trim_dataset(self, filename="dataset.txt", max_lines=1361):
+        """ 只保留 dataset.txt 文件中的前 max_lines 行 """
+        try:
+            # 读取文件所有行
+            with open(filename, "r") as f:
+                lines = f.readlines()
+
+            # 如果文件行数超过 max_lines，则裁剪
+            if len(lines) > max_lines:
+                with open(filename, "w") as f:
+                    f.writelines(lines[:max_lines])  # 只写入前 1361 行
+                print(f"dataset.txt 已裁剪到前 {max_lines} 行")
+            else:
+                print(f"dataset.txt 共有 {len(lines)} 行，无需裁剪")
+
+        except FileNotFoundError:
+            print("dataset.txt 文件不存在，跳过裁剪")
+        except Exception as e:
+            print(f"裁剪 dataset.txt 失败: {e}")
+
     def create_buttons(self):
         button_frame = tk.Frame(self.root, bg="gray")
         button_frame.pack(side=tk.BOTTOM, pady=10)
 
+        # 设定按钮大小
+        button_width = 10
+        button_height = 1
+
+        # 创建按钮
+        btn_start = tk.Button(button_frame, text="Start", font=("Arial", 9, "bold"),
+                              width=button_width, height=button_height, command=self.start_recording)
+        btn_stop = tk.Button(button_frame, text="Stop", font=("Arial", 9, "bold"),
+                             width=button_width, height=button_height, command=self.stop_recording)
+        btn_markov = tk.Button(button_frame, text="Markov", font=("Arial", 9, "bold"),
+                               width=button_width, height=button_height, command=self.generate_markov)
+        btn_magenta = tk.Button(button_frame, text="Magenta", font=("Arial", 9, "bold"),
+                                width=button_width, height=button_height, command=self.generate_magenta)
+        btn_play = tk.Button(button_frame, text="Play", font=("Arial", 9, "bold"),
+                             width=button_width, height=button_height, command=self.play_recording)
+
+        # 播放 Markov 和 Magenta 旋律的按钮
         btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
-                                    width=10, height=1, command=self.play_markov_melody)
-        btn_play_markov.pack(side=tk.TOP, padx=5)
+                                    width=button_width, height=button_height, command=self.play_markov_melody)
+        btn_play_magenta = tk.Button(button_frame, text="Play Magenta", font=("Arial", 9, "bold"),
+                                     width=button_width, height=button_height, command=self.play_magenta)
 
+        # **使用 Grid 布局，使按钮整齐排列**
+        btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
+        btn_play_magenta.grid(row=0, column=3, pady=2)  # Play Magenta 在 Magenta 按钮正上方
 
-        buttons = [
-            ("Start", self.start_recording),
-            ("Stop", self.stop_recording),
-            ("Markov", self.generate_markov),
-            ("Magenta", self.generate_magenta),
-            ("Play", self.play_recording)
-        ]
-
-        for text, command in buttons:
-            btn = tk.Button(button_frame, text=text, font=("Arial", 9, "bold"),
-                            width=10, height=1, command=command)
-            btn.pack(side=tk.LEFT, padx=5)
+        btn_start.grid(row=1, column=0, padx=5, pady=5)
+        btn_stop.grid(row=1, column=1, padx=5, pady=5)
+        btn_markov.grid(row=1, column=2, padx=5, pady=5)  # Markov 按钮
+        btn_magenta.grid(row=1, column=3, padx=5, pady=5)  # Magenta 按钮
+        btn_play.grid(row=1, column=4, padx=5, pady=5)
 
     def start_recording(self):
         self.recording = True
@@ -208,10 +243,13 @@ class VirtualPiano:
             if self.markov_generator:
                 self.markov_generator.train_from_file("dataset.txt")
             else:
-                print("⚠️ Markov 生成器未正确初始化")
+                print("Markov 生成器未正确初始化")
 
         except Exception as e:
             print(f"存储训练数据失败: {e}")
 
     def generate_magenta(self):
         print("Magenta AI 生成旋律（待实现）")
+
+    def play_magenta(self):
+        print("....")
