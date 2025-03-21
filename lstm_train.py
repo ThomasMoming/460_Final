@@ -1,25 +1,28 @@
-import glob
-import pickle
-import numpy as np
-from music21 import converter, instrument, note, chord
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+import numpy as np
+import pickle
 import os
+
+# **检查 GPU**
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if device == torch.device("cpu"):
+    print("没有检测到可用的 GPU，训练终止。请在 GPU 设备上运行此代码。")
+    exit(1)
+
+print(f"训练将在 {device} 上进行 ")
 
 # **超参数**
 EPOCHS = 200  # 训练轮数
 BATCH_SIZE = 64  # 批量大小
 SEQUENCE_LENGTH = 100  # LSTM 输入的序列长度
 LEARNING_RATE = 0.001  # 学习率
-MIDI_DIR = "Classical/**/*.mid"  # **递归搜索所有子目录**
-MODEL_PATH = "lstm_model.pth"  # **模型保存路径**
-DATA_PATH = "data/"  # **数据存储目录**
-
-# **检查 GPU**
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"使用设备: {device}")
+DATASET_PATH = "dataset.txt"  # 训练数据文件
+MODEL_PATH = "lstm_model.pth"  # 模型保存路径
+DATA_PATH = "data/"  # 数据存储目录
 
 
 # **LSTM 模型**
@@ -37,46 +40,30 @@ class LSTMModel(nn.Module):
         return out
 
 
-# **提取 MIDI 音符**
-def get_notes():
-    """ 从 `Classical/` 目录中提取所有音符、offset 和 duration"""
-    notes, offsets, durations = [], [], []
+# **读取 dataset.txt**
+def load_dataset():
+    """ 从 dataset.txt 读取音符和持续时间 """
+    notes, durations = [], []
 
-    for file in glob.glob(MIDI_DIR, recursive=True):
-        print(f"解析: {file}")
-        try:
-            midi = converter.parse(file)
-        except Exception as e:
-            print(f"跳过文件（无法解析）: {file} - 错误: {e}")
-            continue  # **跳过该文件**
+    with open(DATASET_PATH, "r") as f:
+        lines = f.readlines()
 
-        try:
-            parts = instrument.partitionByInstrument(midi)
-            notes_to_parse = parts.parts[0].recurse() if parts else midi.flat.notes
-        except Exception:
-            notes_to_parse = midi.flat.notes
+    for line in lines:
+        pairs = line.strip().split(" ")
+        for pair in pairs:
+            try:
+                note, duration = pair.split(":")
+                notes.append(int(note))  # 转换为整数
+                durations.append(int(duration))
+            except ValueError:
+                print(f"跳过无效数据: {pair}")
 
-        offset_base = 0
-        for element in notes_to_parse:
-            if isinstance(element, note.Note):
-                notes.append(str(element.pitch))
-                offsets.append(str(element.offset - offset_base))
-                durations.append(str(element.duration.quarterLength))
-                offset_base = element.offset
-            elif isinstance(element, chord.Chord):
-                notes.append('.'.join(str(n) for n in element.normalOrder))
-                offsets.append(str(element.offset - offset_base))
-                durations.append(str(element.duration.quarterLength))
-                offset_base = element.offset
-
-    # **保存数据**
+    # **保存音符映射**
     os.makedirs(DATA_PATH, exist_ok=True)
     with open(DATA_PATH + "notes.pkl", "wb") as f:
         pickle.dump(notes, f)
-    with open(DATA_PATH + "durations.pkl", "wb") as f:
-        pickle.dump(durations, f)
 
-    return notes, offsets, durations
+    return notes
 
 
 # **数据集定义**
@@ -93,7 +80,7 @@ class MusicDataset(Dataset):
 
 
 # **准备数据**
-def prepare_sequences(notes, n_vocab):
+def prepare_sequences(notes):
     """ 将音符转换为 LSTM 可用的序列 """
     note_to_int = {note: number for number, note in enumerate(sorted(set(notes)))}
     sequences, targets = [], []
@@ -104,22 +91,19 @@ def prepare_sequences(notes, n_vocab):
         sequences.append([note_to_int[n] for n in sequence_in])
         targets.append(note_to_int[sequence_out])
 
-    return np.array(sequences) / float(n_vocab), np.array(targets)
+    return np.array(sequences) / float(len(note_to_int)), np.array(targets), note_to_int
 
 
 # **训练模型**
 def train_network():
     """ 训练 LSTM 网络 """
-    notes, offsets, durations = get_notes()
-    n_vocab_notes = len(set(notes))
-
-    #  生成训练数据
-    sequences, targets = prepare_sequences(notes, n_vocab_notes)
+    notes = load_dataset()
+    sequences, targets, note_to_int = prepare_sequences(notes)
     dataset = MusicDataset(sequences, targets)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     # **创建 LSTM 模型**
-    model = LSTMModel(input_size=1, output_size=n_vocab_notes).to(device)
+    model = LSTMModel(input_size=1, output_size=len(note_to_int)).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
@@ -146,7 +130,7 @@ def train_network():
 
     # **保存最终模型**
     torch.save(model.state_dict(), MODEL_PATH)
-    print("训练完成，模型已保存！")
+    print("🎉 训练完成，模型已保存！")
 
 
 if __name__ == '__main__':
