@@ -6,6 +6,7 @@ from piano_display import PianoDisplay
 from piano_controls import PianoControls
 import time
 from markov import MarkovMelodyGenerator
+from lstm import load_lstm_model, generate_lstm_melody, get_generated_melody
 
 class VirtualPiano:
     def __init__(self, root):
@@ -44,6 +45,9 @@ class VirtualPiano:
 
         # **初始化 Markov 旋律生成器**
         self.markov_generator = MarkovMelodyGenerator()  # 确保这个对象被创建
+
+        # 初始化模型（只执行一次）
+        load_lstm_model()
 
         self.root.bind("<Escape>", lambda event: self.stop_recording())
 
@@ -84,25 +88,25 @@ class VirtualPiano:
                              width=button_width, height=button_height, command=self.stop_recording)
         btn_markov = tk.Button(button_frame, text="Markov", font=("Arial", 9, "bold"),
                                width=button_width, height=button_height, command=self.generate_markov)
-        btn_Audiocraft = tk.Button(button_frame, text="Audiocraft", font=("Arial", 9, "bold"),
-                                width=button_width, height=button_height, command=self.generate_Audiocraft)
+        btn_LSTM = tk.Button(button_frame, text="LSTM", font=("Arial", 9, "bold"),
+                                width=button_width, height=button_height, command=self.generate_LSTM)
         btn_play = tk.Button(button_frame, text="Play", font=("Arial", 9, "bold"),
                              width=button_width, height=button_height, command=self.play_recording)
 
-        # 播放 Markov 和 Audiocraft 旋律的按钮
+        # 播放 Markov 和 LSTM 旋律的按钮
         btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
                                     width=button_width, height=button_height, command=self.play_markov_melody)
-        btn_play_Audiocraft = tk.Button(button_frame, text="Play Audiocraft", font=("Arial", 9, "bold"),
-                                     width=button_width, height=button_height, command=self.play_Audiocraft)
+        btn_play_LSTM = tk.Button(button_frame, text="Play LSTM", font=("Arial", 9, "bold"),
+                                     width=button_width, height=button_height, command=self.play_LSTM)
 
         # **使用 Grid 布局，使按钮整齐排列**
         btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
-        btn_play_Audiocraft.grid(row=0, column=3, pady=2)  # Play Audiocraft 在 Audiocraft 按钮正上方
+        btn_play_LSTM.grid(row=0, column=3, pady=2)  # Play LSTM 在 LSTM 按钮正上方
 
         btn_start.grid(row=1, column=0, padx=5, pady=5)
         btn_stop.grid(row=1, column=1, padx=5, pady=5)
         btn_markov.grid(row=1, column=2, padx=5, pady=5)  # Markov 按钮
-        btn_Audiocraft.grid(row=1, column=3, padx=5, pady=5)  # Audiocraft 按钮
+        btn_LSTM.grid(row=1, column=3, padx=5, pady=5)  # LSTM 按钮
         btn_play.grid(row=1, column=4, padx=5, pady=5)
 
     def start_recording(self):
@@ -248,8 +252,23 @@ class VirtualPiano:
         except Exception as e:
             print(f"存储训练数据失败: {e}")
 
-    def generate_Audiocraft(self):
-        print("Magenta AI 生成旋律（待实现）")
+    def generate_LSTM(self):
+        if not self.recorded_notes:
+            print("没有录制的音符，无法生成 LSTM 旋律")
+            return
 
-    def play_Audiocraft(self):
-        print("....")
+        note_ids = [config.NOTE_MAP[n] for n in self.recorded_notes]
+        durations = [self.recorded_durations.get(n, 0.5) for n in self.recorded_notes]
+        generate_lstm_melody(note_ids, durations, length=50)
+
+    def play_LSTM(self):
+        melody = get_generated_melody()
+        if not melody:
+            print("没有生成的 LSTM 旋律")
+            return
+
+        print("播放 LSTM 旋律...")
+        for note, duration in melody:
+            event_handler.play_midi(note)
+            time.sleep(duration)
+            event_handler.stop_midi(note)
