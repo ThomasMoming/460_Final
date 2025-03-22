@@ -267,8 +267,14 @@ class VirtualPiano:
             print("没有生成的 LSTM 旋律")
             return
 
-        print("播放 LSTM 旋律...")
+        print("播放 LSTM 旋律 (最多 20 秒)...")
+        start_time = time.time()
+
         for note, duration in melody:
+            elapsed = time.time() - start_time
+            if elapsed > 20:
+                print("播放超时自动停止（20秒）")
+                break
             event_handler.play_midi(note)
             time.sleep(duration)
             event_handler.stop_midi(note)

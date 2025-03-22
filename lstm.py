@@ -1,106 +1,96 @@
 # lstm.py
 import numpy as np
+import torch
+import torch.nn as nn
 import pickle
-from keras.models import load_model
 import os
+import time
 
-# 生成结果缓存
-generated_melody = []
+# 模型定义（结构要与训练时保持一致）
+class LSTMModel(nn.Module):
+    def __init__(self, input_size=1, hidden_size=256, num_layers=3, output_size=128):
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.dropout = nn.Dropout(0.3)
+        self.fc = nn.Linear(hidden_size, output_size)
 
-# 模型与映射全局变量
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.dropout(out[:, -1, :])
+        out = self.fc(out)
+        return out
+
+# 全局变量
 model = None
-int_to_note = {}
-int_to_duration = {}
 note_to_int = {}
-duration_to_int = {}
-n_vocab_note = 0
-n_vocab_duration = 0
-SEQUENCE_LENGTH = 10
+int_to_note = {}
+n_vocab = 0
+generated_melody = []
+SEQUENCE_LENGTH = 100
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ---------- 初始化 ----------
+# 加载模型和映射
 def load_lstm_model(
-    model_path="weights-improvement-58-1.6636-bigger.hdf5",
-    note_path="data/notes",
-    duration_path="data/durations"
+    model_path="lstm_model.pth",
+    note_path="data/notes.pkl"
 ):
-    global model, int_to_note, note_to_int, int_to_duration, duration_to_int, n_vocab_note, n_vocab_duration
+    global model, note_to_int, int_to_note, n_vocab
 
-    # 加载模型
-    if not os.path.exists(model_path):
-        print("LSTM 模型文件不存在！")
-        return
-    model = load_model(model_path)
-    print("LSTM 模型已加载。")
-
-    # 加载 note 和 duration 映射
+    # 读取 note 数据
     with open(note_path, "rb") as f:
         notes = pickle.load(f)
-    with open(duration_path, "rb") as f:
-        durations = pickle.load(f)
 
     note_names = sorted(set(notes))
-    duration_names = sorted(set(durations))
-
     note_to_int = {note: i for i, note in enumerate(note_names)}
     int_to_note = {i: note for i, note in enumerate(note_names)}
+    n_vocab = len(note_names)
 
-    duration_to_int = {d: i for i, d in enumerate(duration_names)}
-    int_to_duration = {i: d for i, d in enumerate(duration_names)}
+    # 构建模型
+    model_obj = LSTMModel(input_size=1, output_size=n_vocab)
+    model_obj.load_state_dict(torch.load(model_path, map_location=device))
+    model_obj.to(device)
+    model_obj.eval()
 
-    n_vocab_note = len(note_names)
-    n_vocab_duration = len(duration_names)
+    model = model_obj
+    print("LSTM 模型加载完成")
 
-
-# ---------- 生成旋律 ----------
-def generate_lstm_melody(seed_notes, seed_durations, length=50):
+# 生成旋律
+def generate_lstm_melody(seed_notes, durations, length=50):
     global generated_melody
 
     if model is None:
-        print("LSTM 模型未加载，无法生成旋律")
+        print("模型未加载")
         return []
 
-    # 数据准备
-    seed = list(zip(seed_notes, seed_durations))
-    if len(seed) < SEQUENCE_LENGTH:
-        print(f"种子序列不足 {SEQUENCE_LENGTH} 个，无法生成")
-        return []
+    if len(seed_notes) < SEQUENCE_LENGTH:
+        print("种子序列不足 100 个音符，正在扩展...")
+        while len(seed_notes) < SEQUENCE_LENGTH:
+            seed_notes += seed_notes  # 重复添加
+        seed_notes = seed_notes[:SEQUENCE_LENGTH]  # 截断刚好 100
 
-    # 仅使用最后 SEQUENCE_LENGTH 作为种子
-    pattern = seed[-SEQUENCE_LENGTH:]
-
-    # 转为整数索引（使用默认值）
-    pattern_notes = [note_to_int.get(str(n), 0) for n, d in pattern]
-    pattern_durs = [duration_to_int.get(str(int(d * 4)), 0) for n, d in pattern]  # duration 用四分音符单位
-
+    # 转为索引并归一化
+    pattern = seed_notes[-SEQUENCE_LENGTH:]
+    pattern_idx = [note_to_int.get(n, 0) for n in pattern]
     output = []
 
     for _ in range(length):
-        # reshape 为 LSTM 输入格式 (1, 10, 1)
-        input_notes = np.reshape(pattern_notes, (1, SEQUENCE_LENGTH, 1)) / float(n_vocab_note)
-        input_durs = np.reshape(pattern_durs, (1, SEQUENCE_LENGTH, 1)) / float(n_vocab_duration)
+        input_seq = np.reshape(pattern_idx, (1, SEQUENCE_LENGTH, 1)) / float(n_vocab)
+        input_tensor = torch.tensor(input_seq, dtype=torch.float32).to(device)
 
-        # 模型预测
-        prediction = model.predict([input_notes, input_durs], verbose=0)
-        note_index = np.argmax(prediction[0])
-        duration_index = np.argmax(prediction[1])
+        with torch.no_grad():
+            prediction = model(input_tensor)
+            index = torch.argmax(prediction).item()
+            result_note = int(int_to_note[index])
+            output.append((result_note, 0.5))  # 默认每个持续 0.5 秒
 
-        result_note = int(int_to_note[note_index])  # 转为 int MIDI 编码
-        result_duration = float(int_to_duration[duration_index])  # 四分音符单位
-
-        output.append((result_note, result_duration))
-
-        # 滚动窗口更新
-        pattern_notes.append(note_index)
-        pattern_notes = pattern_notes[1:]
-
-        pattern_durs.append(duration_index)
-        pattern_durs = pattern_durs[1:]
+            # 更新种子
+            pattern_idx.append(index)
+            pattern_idx = pattern_idx[1:]
 
     print("LSTM 生成旋律:", output)
     generated_melody = output
     return output
 
-
-# ---------- 播放接口 ----------
+# 获取生成结果
 def get_generated_melody():
     return generated_melody
