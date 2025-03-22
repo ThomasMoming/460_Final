@@ -6,7 +6,8 @@ from piano_display import PianoDisplay
 from piano_controls import PianoControls
 import time
 from markov import MarkovMelodyGenerator
-from lstm import load_lstm_model, generate_lstm_melody, get_generated_melody
+from lstm import load_lstm_model, generate_lstm_melody, get_generated_melody, note_to_int, dur_to_int, play_lstm_melody
+
 
 class VirtualPiano:
     def __init__(self, root):
@@ -257,24 +258,10 @@ class VirtualPiano:
             print("没有录制的音符，无法生成 LSTM 旋律")
             return
 
-        note_ids = [config.NOTE_MAP[n] for n in self.recorded_notes]
-        durations = [self.recorded_durations.get(n, 0.5) for n in self.recorded_notes]
-        generate_lstm_melody(note_ids, durations, length=50)
+        note_ids = [note_to_int.get(n, 0) for n in self.recorded_notes]
+        dur_ids = [dur_to_int.get(int(self.recorded_durations.get(n, 0.5) * 1000), 0) for n in self.recorded_notes]
+
+        generate_lstm_melody(note_ids, dur_ids)
 
     def play_LSTM(self):
-        melody = get_generated_melody()
-        if not melody:
-            print("没有生成的 LSTM 旋律")
-            return
-
-        print("播放 LSTM 旋律 (最多 20 秒)...")
-        start_time = time.time()
-
-        for note, duration in melody:
-            elapsed = time.time() - start_time
-            if elapsed > 20:
-                print("播放超时自动停止（20秒）")
-                break
-            event_handler.play_midi(note)
-            time.sleep(duration)
-            event_handler.stop_midi(note)
+        play_lstm_melody(event_handler)

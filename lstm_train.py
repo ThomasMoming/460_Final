@@ -6,132 +6,124 @@ import numpy as np
 import pickle
 import os
 
-# **检查 GPU**
+# ==== 训练设置 ====
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
-if device == torch.device("cpu"):
-    print("没有检测到可用的 GPU，训练终止。请在 GPU 设备上运行此代码。")
-    exit(1)
+EPOCHS = 30
+BATCH_SIZE = 64
+SEQUENCE_LENGTH = 50
+LEARNING_RATE = 0.001
+DATASET_PATH = "dataset.txt"
+MODEL_PATH = "lstm_model.pth"
+DATA_PATH = "data/"
 
-print(f"训练将在 {device} 上进行 ")
-
-# **超参数**
-EPOCHS = 200  # 训练轮数
-BATCH_SIZE = 64  # 批量大小
-SEQUENCE_LENGTH = 100  # LSTM 输入的序列长度
-LEARNING_RATE = 0.001  # 学习率
-DATASET_PATH = "dataset.txt"  # 训练数据文件
-MODEL_PATH = "lstm_model.pth"  # 模型保存路径
-DATA_PATH = "data/"  # 数据存储目录
-
-
-# **LSTM 模型**
-class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size=256, num_layers=3, output_size=128):
-        super(LSTMModel, self).__init__()
+# ==== 模型结构 ====
+class DualLSTMModel(nn.Module):
+    def __init__(self, input_size=2, hidden_size=128, num_layers=2, note_vocab=128, dur_vocab=256):
+        super(DualLSTMModel, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
         self.dropout = nn.Dropout(0.3)
+        self.fc_note = nn.Linear(hidden_size, note_vocab)
+        self.fc_dur = nn.Linear(hidden_size, dur_vocab)
 
     def forward(self, x):
         out, _ = self.lstm(x)
-        out = self.dropout(out[:, -1, :])  # 取最后一个时间步
-        out = self.fc(out)
-        return out
+        out = self.dropout(out[:, -1, :])
+        note_out = self.fc_note(out)
+        dur_out = self.fc_dur(out)
+        return note_out, dur_out
 
-
-# **读取 dataset.txt**
+# ==== 数据处理 ====
 def load_dataset():
-    """ 从 dataset.txt 读取音符和持续时间 """
-    notes, durations = [], []
+    sequences, note_targets, dur_targets = [], [], []
+    note_set, dur_set = set(), set()
 
     with open(DATASET_PATH, "r") as f:
         lines = f.readlines()
 
+    notes_durations = []
     for line in lines:
-        pairs = line.strip().split(" ")
-        for pair in pairs:
-            try:
+        try:
+            pairs = line.strip().split()
+            for pair in pairs:
                 note, duration = pair.split(":")
-                notes.append(int(note))  # 转换为整数
-                durations.append(int(duration))
-            except ValueError:
-                print(f"跳过无效数据: {pair}")
+                note = int(note)
+                duration = int(duration)
+                notes_durations.append((note, duration))
+                note_set.add(note)
+                dur_set.add(duration)
+        except:
+            continue
 
-    # **保存音符映射**
+    note_to_int = {note: i for i, note in enumerate(sorted(note_set))}
+    dur_to_int = {dur: i for i, dur in enumerate(sorted(dur_set))}
+    int_to_note = {i: note for note, i in note_to_int.items()}
+    int_to_dur = {i: dur for dur, i in dur_to_int.items()}
+
     os.makedirs(DATA_PATH, exist_ok=True)
-    with open(DATA_PATH + "notes.pkl", "wb") as f:
-        pickle.dump(notes, f)
+    with open(os.path.join(DATA_PATH, "notes.pkl"), "wb") as f:
+        pickle.dump(int_to_note, f)
+    with open(os.path.join(DATA_PATH, "durations.pkl"), "wb") as f:
+        pickle.dump(int_to_dur, f)
 
-    return notes
+    for i in range(len(notes_durations) - SEQUENCE_LENGTH):
+        seq = notes_durations[i:i + SEQUENCE_LENGTH]
+        target = notes_durations[i + SEQUENCE_LENGTH]
+        seq_norm = [[n / 128.0, d / 1000.0] for n, d in seq]
+        sequences.append(seq_norm)
+        note_targets.append(note_to_int[target[0]])
+        dur_targets.append(dur_to_int[target[1]])
 
+    return sequences, note_targets, dur_targets, len(note_to_int), len(dur_to_int)
 
-# **数据集定义**
 class MusicDataset(Dataset):
-    def __init__(self, sequences, targets):
+    def __init__(self, sequences, note_targets, dur_targets):
         self.sequences = sequences
-        self.targets = targets
+        self.note_targets = note_targets
+        self.dur_targets = dur_targets
 
     def __len__(self):
         return len(self.sequences)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.sequences[idx], dtype=torch.float32), torch.tensor(self.targets[idx], dtype=torch.long)
+        return (
+            torch.tensor(self.sequences[idx], dtype=torch.float32),
+            torch.tensor(self.note_targets[idx], dtype=torch.long),
+            torch.tensor(self.dur_targets[idx], dtype=torch.long)
+        )
 
-
-# **准备数据**
-def prepare_sequences(notes):
-    """ 将音符转换为 LSTM 可用的序列 """
-    note_to_int = {note: number for number, note in enumerate(sorted(set(notes)))}
-    sequences, targets = [], []
-
-    for i in range(0, len(notes) - SEQUENCE_LENGTH):
-        sequence_in = notes[i:i + SEQUENCE_LENGTH]
-        sequence_out = notes[i + SEQUENCE_LENGTH]
-        sequences.append([note_to_int[n] for n in sequence_in])
-        targets.append(note_to_int[sequence_out])
-
-    return np.array(sequences) / float(len(note_to_int)), np.array(targets), note_to_int
-
-
-# **训练模型**
+# ==== 训练 ====
 def train_network():
-    """ 训练 LSTM 网络 """
-    notes = load_dataset()
-    sequences, targets, note_to_int = prepare_sequences(notes)
-    dataset = MusicDataset(sequences, targets)
+    sequences, note_targets, dur_targets, note_vocab, dur_vocab = load_dataset()
+    dataset = MusicDataset(sequences, note_targets, dur_targets)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-    # **创建 LSTM 模型**
-    model = LSTMModel(input_size=1, output_size=len(note_to_int)).to(device)
-    criterion = nn.CrossEntropyLoss()
+    model = DualLSTMModel(input_size=2, note_vocab=note_vocab, dur_vocab=dur_vocab).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    criterion = nn.CrossEntropyLoss()
 
-    # **训练循环**
     for epoch in range(EPOCHS):
         model.train()
         total_loss = 0
-        for batch_x, batch_y in dataloader:
-            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
-            batch_x = batch_x.unsqueeze(-1)  # **增加最后一维**
+        for batch_x, batch_note_y, batch_dur_y in dataloader:
+            batch_x = batch_x.to(device)
+            batch_note_y = batch_note_y.to(device)
+            batch_dur_y = batch_dur_y.to(device)
 
             optimizer.zero_grad()
-            output = model(batch_x)
-            loss = criterion(output, batch_y)
+            note_pred, dur_pred = model(batch_x)
+            loss_note = criterion(note_pred, batch_note_y)
+            loss_dur = criterion(dur_pred, batch_dur_y)
+            loss = loss_note + loss_dur
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
 
-        print(f"Epoch [{epoch + 1}/{EPOCHS}], Loss: {total_loss / len(dataloader):.4f}")
+        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {total_loss / len(dataloader):.4f}")
 
-        # **保存最优模型**
-        if (epoch + 1) % 10 == 0:
-            torch.save(model.state_dict(), f"weights-improvement-{epoch + 1}.pth")
-
-    # **保存最终模型**
     torch.save(model.state_dict(), MODEL_PATH)
-    print("🎉 训练完成，模型已保存！")
+    print("模型训练完成并保存到", MODEL_PATH)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     train_network()
