@@ -94,15 +94,15 @@ class VirtualPiano:
         btn_play = tk.Button(button_frame, text="Play", font=("Arial", 9, "bold"),
                              width=button_width, height=button_height, command=self.play_recording)
 
-        # 播放 Markov 和 LSTM 旋律的按钮
-        btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
-                                    width=button_width, height=button_height, command=self.play_markov_melody)
-        btn_play_LSTM = tk.Button(button_frame, text="Play LSTM", font=("Arial", 9, "bold"),
-                                     width=button_width, height=button_height, command=self.play_LSTM)
+        # # 播放 Markov 和 LSTM 旋律的按钮
+        # btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
+        #                             width=button_width, height=button_height, command=self.play_markov_melody)
+        # btn_play_LSTM = tk.Button(button_frame, text="Play LSTM", font=("Arial", 9, "bold"),
+        #                              width=button_width, height=button_height, command=self.play_LSTM)
 
-        # **使用 Grid 布局，使按钮整齐排列**
-        btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
-        btn_play_LSTM.grid(row=0, column=3, pady=2)  # Play LSTM 在 LSTM 按钮正上方
+        # # **使用 Grid 布局，使按钮整齐排列**
+        # btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
+        # btn_play_LSTM.grid(row=0, column=3, pady=2)  # Play LSTM 在 LSTM 按钮正上方
 
         btn_start.grid(row=1, column=0, padx=5, pady=5)
         btn_stop.grid(row=1, column=1, padx=5, pady=5)
@@ -250,6 +250,8 @@ class VirtualPiano:
             else:
                 print("Markov 生成器未正确初始化")
 
+            self.play_markov_melody()
+
         except Exception as e:
             print(f"存储训练数据失败: {e}")
 
@@ -262,6 +264,8 @@ class VirtualPiano:
         dur_ids = [dur_to_int.get(int(self.recorded_durations.get(n, 0.5) * 1000), 0) for n in self.recorded_notes]
 
         generate_lstm_melody(note_ids, dur_ids)
+
+        self.play_LSTM()
 
     def play_LSTM(self):
         play_lstm_melody(event_handler)
