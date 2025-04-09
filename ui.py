@@ -5,6 +5,7 @@ import event_handler
 from piano_display import PianoDisplay
 from piano_controls import PianoControls
 import time
+from PIL import Image, ImageTk
 from markov import MarkovMelodyGenerator
 from lstm import load_lstm_model, generate_lstm_melody, get_generated_melody, note_to_int, dur_to_int, play_lstm_melody
 
@@ -14,26 +15,68 @@ class VirtualPiano:
         self.root = root
         self.root.title("Virtual Piano")
         self.root.geometry("450x350")
-        self.root.configure(bg="gray")
+
+        # 加载背景图片
+        bg_image_path = "Img/background1.png"  # 替换成你的实际路径
+        try:
+            image = Image.open(bg_image_path).resize((450, 350))  # 确保尺寸一致
+            self.bg_image = ImageTk.PhotoImage(image)
+
+            # 创建一个 Label 来作为背景
+            self.bg_label = tk.Label(root, image=self.bg_image)
+            self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+            self.bg_label.lower()  # **确保背景在最底层**
+        except Exception as e:
+            print(f"加载背景图片失败: {e}")
+
+        # self.root.configure(bg="gray")
         self.root.focus_force()
         self.trim_dataset()
 
         self.note_display = PianoDisplay(root)
 
         self.keys = {}
+        # === 先创建白键 ===
         for key, (x, y) in config.KEY_POSITIONS.items():
-            is_black = "#" in key
-            bg_color = config.BLACK_KEY_COLOR if is_black else config.WHITE_KEY_COLOR
-            fg_color = "white" if is_black else "black"
+            if "#" in key:
+                continue  # 跳过黑键
 
             btn = tk.Button(
-                root, text=f"{config.SCALE_MAP[key]}\n{config.KEY_DISPLAY_MAP[key]}",
-                width=5, height=3, bg=bg_color, fg=fg_color,
+                root,
+                text=f"{config.SCALE_MAP[key]}\n{config.KEY_DISPLAY_MAP[key]}",
+                bg=config.WHITE_KEY_COLOR,
+                fg="black",
                 font=("Arial", 10, "bold"),
+                relief="raised",
+                bd=1,
+                justify="center",  # 居中对齐
+                anchor="n",  # 顶部对齐（可选）
+                padx=0,
+                pady=80,  # 关键：调整这个值来下移文字
                 command=lambda k=key: self.record_and_play_foruser(k)
             )
-            btn.place(x=x, y=y)
+            btn.place(x=x, y=y, width=53, height=120)
             self.keys[key] = btn
+
+        # === 后创建黑键（自然叠在白键之上）===
+        for key, (x, y) in config.KEY_POSITIONS.items():
+            if "#" not in key:
+                continue  # 跳过白键
+
+            btn = tk.Button(
+                root,
+                text=f"{config.SCALE_MAP[key]}\n{config.KEY_DISPLAY_MAP[key]}",
+                bg=config.BLACK_KEY_COLOR,
+                fg="white",
+                font=("Arial", 10, "bold"),
+                relief="raised",
+                bd=1,
+                command=lambda k=key: self.record_and_play_foruser(k)
+            )
+            btn.place(x=x, y=y, width=30, height=80)
+            btn.lift()  # 确保黑键在上方
+            self.keys[key] = btn
+
 
         self.controls = PianoControls(self.root, self.keys, self.note_display, self)
 
@@ -75,40 +118,58 @@ class VirtualPiano:
             print(f"裁剪 dataset.txt 失败: {e}")
 
     def create_buttons(self):
-        button_frame = tk.Frame(self.root, bg="gray")
-        button_frame.pack(side=tk.BOTTOM, pady=10)
+        # === 移除原来的 frame，用 place 精准定位按钮 ===
 
-        # 设定按钮大小
-        button_width = 10
-        button_height = 1
+        # 五个按钮的宽高和位置（按 450x350 窗口比例缩放自 Figma 设计）
+        button_width = 75
+        button_height = 22
+        button_y = 322  # 按照背景图缩放换算出来的底部高度
 
-        # 创建按钮
-        btn_start = tk.Button(button_frame, text="Start", font=("Arial", 9, "bold"),
-                              width=button_width, height=button_height, command=self.start_recording)
-        btn_stop = tk.Button(button_frame, text="Stop", font=("Arial", 9, "bold"),
-                             width=button_width, height=button_height, command=self.stop_recording)
-        btn_markov = tk.Button(button_frame, text="Markov", font=("Arial", 9, "bold"),
-                               width=button_width, height=button_height, command=self.generate_markov)
-        btn_LSTM = tk.Button(button_frame, text="LSTM", font=("Arial", 9, "bold"),
-                                width=button_width, height=button_height, command=self.generate_LSTM)
-        btn_play = tk.Button(button_frame, text="Play", font=("Arial", 9, "bold"),
-                             width=button_width, height=button_height, command=self.play_recording)
+        # ========== 创建透明风格按钮并 place 到指定位置 ==========
+        btn_start = tk.Button(
+            self.root, text="Start",
+            font=("Arial", 9, "bold"),
+            bg="SystemButtonFace", fg="black",  # 背景透明，文字黑色
+            bd=0, highlightthickness=0, relief="flat",
+            command=self.start_recording
+        )
+        btn_start.place(x=16, y=button_y, width=button_width, height=button_height)
 
-        # # 播放 Markov 和 LSTM 旋律的按钮
-        # btn_play_markov = tk.Button(button_frame, text="Play Markov", font=("Arial", 9, "bold"),
-        #                             width=button_width, height=button_height, command=self.play_markov_melody)
-        # btn_play_LSTM = tk.Button(button_frame, text="Play LSTM", font=("Arial", 9, "bold"),
-        #                              width=button_width, height=button_height, command=self.play_LSTM)
+        btn_stop = tk.Button(
+            self.root, text="Stop",
+            font=("Arial", 9, "bold"),
+            bg="SystemButtonFace", fg="black",
+            bd=0, highlightthickness=0, relief="flat",
+            command=self.stop_recording
+        )
+        btn_stop.place(x=101, y=button_y, width=button_width, height=button_height)
 
-        # # **使用 Grid 布局，使按钮整齐排列**
-        # btn_play_markov.grid(row=0, column=2, pady=2)  # Play Markov 在 Markov 按钮正上方
-        # btn_play_LSTM.grid(row=0, column=3, pady=2)  # Play LSTM 在 LSTM 按钮正上方
+        btn_markov = tk.Button(
+            self.root, text="Markov",
+            font=("Arial", 9, "bold"),
+            bg="SystemButtonFace", fg="black",
+            bd=0, highlightthickness=0, relief="flat",
+            command=self.generate_markov
+        )
+        btn_markov.place(x=186, y=button_y, width=button_width, height=button_height)
 
-        btn_start.grid(row=1, column=0, padx=5, pady=5)
-        btn_stop.grid(row=1, column=1, padx=5, pady=5)
-        btn_markov.grid(row=1, column=2, padx=5, pady=5)  # Markov 按钮
-        btn_LSTM.grid(row=1, column=3, padx=5, pady=5)  # LSTM 按钮
-        btn_play.grid(row=1, column=4, padx=5, pady=5)
+        btn_LSTM = tk.Button(
+            self.root, text="LSTM",
+            font=("Arial", 9, "bold"),
+            bg="SystemButtonFace", fg="black",
+            bd=0, highlightthickness=0, relief="flat",
+            command=self.generate_LSTM
+        )
+        btn_LSTM.place(x=271, y=button_y, width=button_width, height=button_height)
+
+        btn_play = tk.Button(
+            self.root, text="Play",
+            font=("Arial", 9, "bold"),
+            bg="SystemButtonFace", fg="black",
+            bd=0, highlightthickness=0, relief="flat",
+            command=self.play_recording
+        )
+        btn_play.place(x=356, y=button_y, width=button_width, height=button_height)
 
     def start_recording(self):
         self.recording = True
